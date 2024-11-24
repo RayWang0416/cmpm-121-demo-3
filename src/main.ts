@@ -39,7 +39,7 @@ const map = leaflet.map(document.getElementById("map")!, {
   scrollWheelZoom: false,
 });
 
-// Populate the map with a background tile layer
+// Populate the map with background tile layer
 leaflet
   .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -74,8 +74,10 @@ function spawnCache(i: number, j: number) {
       origin.lng + (cell.j + 1) * TILE_DEGREES,
     ],
   ]);
+
   cell.i = origin.lat + cell.i * TILE_DEGREES;
   cell.j = origin.lat + cell.j * TILE_DEGREES;
+
   // Add a rectangle to the map to represent the cache
   const rect = leaflet.rectangle(bounds);
   rect.addTo(map);
