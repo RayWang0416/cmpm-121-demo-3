@@ -134,7 +134,7 @@ function spawnCache(i: number, j: number) {
       },
     );
 
-    // Deposit button: Transfer coins from player inventory to cache
+    // Deposit Button: Transfer coins from player inventory to cache
     popupDiv
       .querySelector<HTMLButtonElement>("#deposit")!
       .addEventListener("click", () => {
