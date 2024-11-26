@@ -68,11 +68,11 @@ interface Memento<T> {
 
 class Cache implements Memento<string> {
   coins: string[];
-  rect: leaflet.Rectangle | null;
+  marker: leaflet.Marker | null;
 
-  constructor(coins: string[] = []) {
+  constructor(coins: string[] = [], lat: number, lng: number) {
     this.coins = coins;
-    this.rect = null; // Will hold the Leaflet rectangle
+    this.marker = leaflet.marker([lat, lng]); // Create a marker for the cache
   }
 
   toMemento(): string {
@@ -84,10 +84,10 @@ class Cache implements Memento<string> {
     this.coins = state.coins;
   }
 
-  // Method to add event listeners to the cache's rectangle
+  // Method to add event listeners to the cache's marker
   bindPopup() {
-    if (this.rect) {
-      this.rect.bindPopup(() => {
+    if (this.marker) {
+      this.marker.bindPopup(() => {
         const popupDiv = document.createElement("div");
         popupDiv.innerHTML = `
           <div>Cache Inventory:</div>
@@ -99,7 +99,8 @@ class Cache implements Memento<string> {
               )
               .join("")}
           </ul>
-          <button id="deposit">Deposit</button>`;
+          <button id="deposit">Deposit</button>
+          <div>Cache Location: (${this.marker?.getLatLng().lat.toFixed(5) ?? 'Unknown'}, ${this.marker?.getLatLng().lng.toFixed(5) ?? 'Unknown'})</div>`;
 
         // Add event listeners for collect buttons
         popupDiv.querySelectorAll<HTMLButtonElement>(".collect-button").forEach(
@@ -170,23 +171,21 @@ function spawnCache(i: number, j: number) {
     );
     const coins = Array.from(
       { length: coinCount },
-      (_, index) => `{i: ${cell.i}, j: ${cell.j}, # ${index}}`
+      (_, index) => `coin_${OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES},${OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES} #${index}`
     );
 
-    cacheStorage[cacheKey] = new Cache(coins);
+    const lat = OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES;
+    const lng = OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES;
+    cacheStorage[cacheKey] = new Cache(coins, lat, lng);
   }
 
   const cache = cacheStorage[cacheKey];
 
   // Restore cache state and display it on the map
-  const bounds = leaflet.latLngBounds([
-    [OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES, OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES],
-    [OAKES_CLASSROOM.lat + (cell.i + 1) * TILE_DEGREES, OAKES_CLASSROOM.lng + (cell.j + 1) * TILE_DEGREES],
-  ]);
-
-  if (!cache.rect) {
-    cache.rect = leaflet.rectangle(bounds);
-    cache.bindPopup(); // Bind popup when the rectangle is created
+  if (!cache.marker) {
+    cache.marker = leaflet.marker([OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES, OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES]);
+    cache.marker.addTo(map);
+    cache.bindPopup(); // Bind popup when the marker is created
   }
 }
 
@@ -205,13 +204,13 @@ function updateCacheVisibility(playerLat: number, playerLng: number) {
 
     // Show or hide cache based on distance
     if (distance <= MAX_VISIBLE_DISTANCE) {
-      if (!map.hasLayer(cache.rect!)) {
-        cache.rect!.addTo(map);
+      if (!map.hasLayer(cache.marker!)) {
+        cache.marker!.addTo(map);
         cache.bindPopup(); // Ensure popups are bound when added to the map
       }
     } else {
-      if (map.hasLayer(cache.rect!)) {
-        map.removeLayer(cache.rect!);
+      if (map.hasLayer(cache.marker!)) {
+        map.removeLayer(cache.marker!);
       }
     }
   });
