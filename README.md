@@ -26,7 +26,7 @@ This project is a geocaching game that presents the player with an interactive m
 
 
 ## Usage
-- Use terminal and nevigate to the repository and type: deno run dev
+- Use terminal and nevigate to the repository "cmpm-121-demo-3" and type: deno run dev
 
 
 ## How to Play
