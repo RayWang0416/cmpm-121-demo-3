@@ -92,15 +92,19 @@ class Cache implements Memento<string> {
         popupDiv.innerHTML = `
           <div>Cache Inventory:</div>
           <ul id="coin-list">
-            ${this.coins
-              .map(
-                (coinId) =>
-                  `<li>${coinId} <button data-coin-id="${coinId}" class="collect-button">collect</button></li>`
-              )
-              .join("")}
+            ${
+          this.coins
+            .map(
+              (coinId) =>
+                `<li>${coinId} <button data-coin-id="${coinId}" class="collect-button">collect</button></li>`,
+            )
+            .join("")
+        }
           </ul>
           <button id="deposit">Deposit</button>
-          <div>Cache Location: (${this.marker?.getLatLng().lat.toFixed(5) ?? 'Unknown'}, ${this.marker?.getLatLng().lng.toFixed(5) ?? 'Unknown'})</div>`;
+          <div>Cache Location: (${
+          this.marker?.getLatLng().lat.toFixed(5) ?? "Unknown"
+        }, ${this.marker?.getLatLng().lng.toFixed(5) ?? "Unknown"})</div>`;
 
         // Add event listeners for collect buttons
         popupDiv.querySelectorAll<HTMLButtonElement>(".collect-button").forEach(
@@ -114,7 +118,7 @@ class Cache implements Memento<string> {
                 button.parentElement!.remove();
               }
             });
-          }
+          },
         );
 
         // Deposit Button: Transfer coins from player inventory to cache
@@ -129,14 +133,17 @@ class Cache implements Memento<string> {
               updateStatusPanel();
               const coinList = popupDiv.querySelector("#coin-list")!;
               const newCoinItem = document.createElement("li");
-              newCoinItem.innerHTML = `${depositCoinId} <button data-coin-id="${depositCoinId}" class="collect-button">collect</button>`;
+              newCoinItem.innerHTML =
+                `${depositCoinId} <button data-coin-id="${depositCoinId}" class="collect-button">collect</button>`;
               coinList.appendChild(newCoinItem);
 
               // Bind collect event to the new coin
               newCoinItem.querySelector<HTMLButtonElement>(".collect-button")!
                 .addEventListener("click", () => {
                   if (this.coins.indexOf(depositCoinId) !== -1) {
-                    this.coins = this.coins.filter((id) => id !== depositCoinId);
+                    this.coins = this.coins.filter((id) =>
+                      id !== depositCoinId
+                    );
                     playerInventory[depositCoinId] =
                       (playerInventory[depositCoinId] || 0) + 1;
                     updateStatusPanel();
@@ -165,13 +172,16 @@ function spawnCache(i: number, j: number) {
     // Create new cache if it doesn't exist
     const coinCount = Math.min(
       Math.floor(
-        luck([cell.i, cell.j, "initialValue"].toString()) * MAX_COINS_PER_CACHE
+        luck([cell.i, cell.j, "initialValue"].toString()) * MAX_COINS_PER_CACHE,
       ) + 1,
-      MAX_COINS_PER_CACHE
+      MAX_COINS_PER_CACHE,
     );
     const coins = Array.from(
       { length: coinCount },
-      (_, index) => `coin_${OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES},${OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES} #${index}`
+      (_, index) =>
+        `coin_${OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES},${
+          OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES
+        } #${index}`,
     );
 
     const lat = OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES;
@@ -183,7 +193,10 @@ function spawnCache(i: number, j: number) {
 
   // Restore cache state and display it on the map
   if (!cache.marker) {
-    cache.marker = leaflet.marker([OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES, OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES]);
+    cache.marker = leaflet.marker([
+      OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES,
+      OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES,
+    ]);
     cache.marker.addTo(map);
     cache.bindPopup(); // Bind popup when the marker is created
   }
@@ -199,7 +212,7 @@ function updateCacheVisibility(playerLat: number, playerLng: number) {
     const cacheLat = OAKES_CLASSROOM.lat + i * TILE_DEGREES;
     const cacheLng = OAKES_CLASSROOM.lng + j * TILE_DEGREES;
     const distance = Math.sqrt(
-      Math.pow(playerLat - cacheLat, 2) + Math.pow(playerLng - cacheLng, 2)
+      Math.pow(playerLat - cacheLat, 2) + Math.pow(playerLng - cacheLng, 2),
     );
 
     // Show or hide cache based on distance
@@ -231,8 +244,16 @@ function regenerateCachesAroundPlayer(lat: number, lng: number) {
   const { i: playerI, j: playerJ } = getPlayerCell(lat, lng);
 
   // Spawn or restore caches around the player's current cell
-  for (let i = playerI - NEIGHBORHOOD_SIZE; i < playerI + NEIGHBORHOOD_SIZE; i++) {
-    for (let j = playerJ - NEIGHBORHOOD_SIZE; j < playerJ + NEIGHBORHOOD_SIZE; j++) {
+  for (
+    let i = playerI - NEIGHBORHOOD_SIZE;
+    i < playerI + NEIGHBORHOOD_SIZE;
+    i++
+  ) {
+    for (
+      let j = playerJ - NEIGHBORHOOD_SIZE;
+      j < playerJ + NEIGHBORHOOD_SIZE;
+      j++
+    ) {
       const cacheKey = `${i},${j}`;
       if (cacheStorage[cacheKey]) {
         // Restore the cache state
@@ -284,7 +305,9 @@ self.addEventListener("keydown", (event) => {
 
   updateCacheVisibility(newLat, newLng);
 
-  statusPanel.innerHTML = `Player moved to: ${newLat.toFixed(5)}, ${newLng.toFixed(5)}`;
+  statusPanel.innerHTML = `Player moved to: ${newLat.toFixed(5)}, ${
+    newLng.toFixed(5)
+  }`;
 });
 
 // Function to handle player movement
@@ -322,13 +345,27 @@ function movePlayer(direction: string) {
 
   updateCacheVisibility(newLat, newLng);
 
-  statusPanel.innerHTML = `Player moved to: ${newLat.toFixed(5)}, ${newLng.toFixed(5)}`;
+  statusPanel.innerHTML = `Player moved to: ${newLat.toFixed(5)}, ${
+    newLng.toFixed(5)
+  }`;
 }
 
-document.getElementById("north")!.addEventListener("click", () => movePlayer("up"));
-document.getElementById("south")!.addEventListener("click", () => movePlayer("down"));
-document.getElementById("west")!.addEventListener("click", () => movePlayer("left"));
-document.getElementById("east")!.addEventListener("click", () => movePlayer("right"));
+document.getElementById("north")!.addEventListener(
+  "click",
+  () => movePlayer("up"),
+);
+document.getElementById("south")!.addEventListener(
+  "click",
+  () => movePlayer("down"),
+);
+document.getElementById("west")!.addEventListener(
+  "click",
+  () => movePlayer("left"),
+);
+document.getElementById("east")!.addEventListener(
+  "click",
+  () => movePlayer("right"),
+);
 
 // Update player's inventory status panel
 function updateStatusPanel() {
