@@ -187,14 +187,8 @@ function spawnCache(i: number, j: number) {
     const coins = Array.from(
       { length: coinCount },
       (_, index) =>
-        `coin_${
-          roundToDecimals(
-            OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES,
-          )
-        },${
-          roundToDecimals(
-            OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES,
-          )
+        `coin_${roundToDecimals(OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES)},${
+          roundToDecimals(OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES)
         } #${index}`,
     );
 
@@ -369,7 +363,7 @@ document.getElementById("reset")!.addEventListener("click", () => {
   }
 });
 
-// Geolocation activation via 🌐 button
+// Real Location 🌐 button
 document.getElementById("sensor")!.addEventListener("click", () => {
   if (navigator.geolocation) {
     navigator.geolocation.watchPosition((position) => {
