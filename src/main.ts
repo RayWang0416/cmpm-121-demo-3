@@ -350,10 +350,22 @@ function movePlayer(direction: string) {
   }`;
 }
 
-document.getElementById("north")!.addEventListener("click",() => movePlayer("up"),);
-document.getElementById("south")!.addEventListener("click",() => movePlayer("down"),);
-document.getElementById("west")!.addEventListener("click",() => movePlayer("left"),);
-document.getElementById("east")!.addEventListener("click",() => movePlayer("right"),);
+document.getElementById("north")!.addEventListener(
+  "click",
+  () => movePlayer("up"),
+);
+document.getElementById("south")!.addEventListener(
+  "click",
+  () => movePlayer("down"),
+);
+document.getElementById("west")!.addEventListener(
+  "click",
+  () => movePlayer("left"),
+);
+document.getElementById("east")!.addEventListener(
+  "click",
+  () => movePlayer("right"),
+);
 
 // Update player's inventory status panel
 function updateStatusPanel() {
