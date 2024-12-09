@@ -8,7 +8,7 @@ import "./style.css";
 // Deterministic random number generator
 import luck from "./luck.ts";
 
-// Location of our classroom (as identified on Google Maps)
+// Location of our classroom
 const OAKES_CLASSROOM = leaflet.latLng(36.989, -122.062);
 
 // Tunable gameplay parameters
@@ -18,9 +18,8 @@ const NEIGHBORHOOD_SIZE = 8;
 const CACHE_SPAWN_PROBABILITY = 0.02;
 const MAX_COINS_PER_CACHE = 3;
 const MOVEMENT_STEP = TILE_DEGREES;
-const MAX_VISIBLE_DISTANCE = 0.001; // Max distance in degrees (~111m per 0.001 latitude)
+const MAX_VISIBLE_DISTANCE = 0.001;
 
-// Flyweight pattern for managing game cells
 const cellCache: Record<string, { i: number; j: number }> = {};
 
 function getCell(i: number, j: number) {
@@ -31,7 +30,7 @@ function getCell(i: number, j: number) {
   return cellCache[key];
 }
 
-// Create the map (element with id "map" is defined in index.html)
+// Create the map
 const map = leaflet.map(document.getElementById("map")!, {
   center: OAKES_CLASSROOM,
   zoom: GAMEPLAY_ZOOM_LEVEL,
@@ -41,47 +40,146 @@ const map = leaflet.map(document.getElementById("map")!, {
   scrollWheelZoom: false,
 });
 
-// Populate the map with background tile layer
 leaflet
   .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
-    attribution:
-      '&copy; <a href="http://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+    attribution: '&copy; OpenStreetMap contributors',
   })
   .addTo(map);
 
-// Add a marker to represent the player
 const playerMarker = leaflet.marker(OAKES_CLASSROOM, { draggable: true });
 playerMarker.bindTooltip("That's you!");
 playerMarker.addTo(map);
 
-// Display the player's inventory
-const playerInventory: Record<string, number> = {};
-const statusPanel = document.querySelector<HTMLDivElement>("#statusPanel")!;
-statusPanel.innerHTML = "Player Inventory: None";
+// PlayerInventory负责玩家物品管理
+class PlayerInventory {
+  private inventory: Record<string, number> = {};
 
-// Add a polyline to track player movement history
+  addItem(coinId: string) {
+    this.inventory[coinId] = (this.inventory[coinId] || 0) + 1;
+  }
+
+  removeItem(coinId: string) {
+    if (this.inventory[coinId]) {
+      delete this.inventory[coinId];
+    }
+  }
+
+  getItems() {
+    return this.inventory;
+  }
+
+  clear() {
+    this.inventory = {};
+  }
+}
+
+// UIManager负责全局UI更新
+class UIManager {
+  static updateStatusPanel(inventory: Record<string, number>) {
+    const statusPanel = document.getElementById("statusPanel") as HTMLDivElement;
+    const coinKeys = Object.keys(inventory);
+    statusPanel.innerHTML = coinKeys.length > 0
+      ? `Player Inventory: ${coinKeys.join(", ")}`
+      : "Player Inventory: None";
+  }
+}
+
+// CacheUI负责缓存UI弹窗创建
+class CacheUI {
+  static createPopup(
+    coins: string[],
+    onCollect: (coinId: string) => void,
+    onDeposit: () => void,
+    lat: number,
+    lng: number
+  ): HTMLElement {
+    const popupDiv = document.createElement("div");
+    popupDiv.innerHTML = `
+      <div>Cache Inventory:</div>
+      <ul id="coin-list">
+        ${coins.map((coinId) =>
+          `<li>${coinId} <button data-coin-id="${coinId}" class="collect-button">collect</button></li>`
+        ).join("")}
+      </ul>
+      <button id="deposit">Deposit</button>
+      <div>Cache Location: (${lat.toFixed(5)}, ${lng.toFixed(5)})</div>
+    `;
+
+    // Collect按钮事件
+    popupDiv.querySelectorAll<HTMLButtonElement>(".collect-button").forEach(button => {
+      button.addEventListener("click", () => {
+        const coinId = button.getAttribute("data-coin-id");
+        if (coinId) {
+          onCollect(coinId);
+          button.parentElement?.remove();
+        }
+      });
+    });
+
+    // Deposit按钮事件
+    const depositBtn = popupDiv.querySelector<HTMLButtonElement>("#deposit");
+    if (depositBtn) {
+      depositBtn.addEventListener("click", () => {
+        onDeposit();
+      });
+    }
+
+    return popupDiv;
+  }
+}
+
+// 事件总线（可选）
+class EventEmitter {
+  private events: Record<string, Function[]> = {};
+
+  on(event: string, listener: Function) {
+    if (!this.events[event]) {
+      this.events[event] = [];
+    }
+    this.events[event].push(listener);
+  }
+
+  emit(event: string, ...args: any[]) {
+    if (this.events[event]) {
+      this.events[event].forEach(listener => listener(...args));
+    }
+  }
+}
+
+// 定义Cacheable接口，Cache实现该接口专注于数据相关方法
+interface Cacheable {
+  toMemento(): string;
+  fromMemento(memento: string): void;
+}
+
+// 将数值相关的实用函数分组在NumberUtils中
+class NumberUtils {
+  static roundToDecimals(num: number, decimals: number = 5): number {
+    return parseFloat(num.toFixed(decimals));
+  }
+}
+
+const playerInventory = new PlayerInventory();
+const eventBus = new EventEmitter();
+
+UIManager.updateStatusPanel(playerInventory.getItems());
+
 const movementPolyline = leaflet.polyline([], { color: "red" }).addTo(map);
 
-// Function to update the player's movement history
 function updateMovementHistory(lat: number, lng: number) {
   const currentLatLng = leaflet.latLng(lat, lng);
   movementPolyline.addLatLng(currentLatLng);
 }
 
-// Memento interface and Cache class
-interface Memento<T> {
-  toMemento(): T;
-  fromMemento(memento: T): void;
-}
-
-class Cache implements Memento<string> {
+// Cache类只负责缓存数据逻辑，并实现Cacheable接口
+class Cache implements Cacheable {
   coins: string[];
   marker: leaflet.Marker | null;
 
   constructor(coins: string[] = [], lat: number, lng: number) {
     this.coins = coins;
-    this.marker = leaflet.marker([lat, lng]); // Create a marker for the cache
+    this.marker = leaflet.marker([lat, lng]);
   }
 
   toMemento(): string {
@@ -95,84 +193,43 @@ class Cache implements Memento<string> {
 
   bindPopup() {
     if (this.marker) {
-      this.marker.bindPopup(() => {
-        const popupDiv = document.createElement("div");
-        popupDiv.innerHTML = `
-          <div>Cache Inventory:</div>
-          <ul id="coin-list">
-            ${
-          this.coins
-            .map(
-              (coinId) =>
-                `<li>${coinId} <button data-coin-id="${coinId}" class="collect-button">collect</button></li>`,
-            )
-            .join("")
+      const latLng = this.marker.getLatLng();
+
+      const onCollect = (coinId: string) => {
+        this.coins = this.coins.filter((id) => id !== coinId);
+        playerInventory.addItem(coinId);
+        UIManager.updateStatusPanel(playerInventory.getItems());
+        eventBus.emit("cacheUpdated", this);
+        this.refreshPopupContent(latLng.lat, latLng.lng, onCollect, onDeposit);
+      };
+
+      const onDeposit = () => {
+        const coinKeys = Object.keys(playerInventory.getItems());
+        if (coinKeys.length > 0) {
+          const depositCoinId = coinKeys[0];
+          playerInventory.removeItem(depositCoinId);
+          this.coins.push(depositCoinId);
+          UIManager.updateStatusPanel(playerInventory.getItems());
+          eventBus.emit("cacheUpdated", this);
+          this.refreshPopupContent(latLng.lat, latLng.lng, onCollect, onDeposit);
         }
-          </ul>
-          <button id="deposit">Deposit</button>
-          <div>Cache Location: (${
-          this.marker?.getLatLng().lat.toFixed(5) ?? "Unknown"
-        }, ${this.marker?.getLatLng().lng.toFixed(5) ?? "Unknown"})</div>`;
+      };
 
-        popupDiv.querySelectorAll<HTMLButtonElement>(".collect-button").forEach(
-          (button) => {
-            button.addEventListener("click", () => {
-              const coinId = button.getAttribute("data-coin-id");
-              if (coinId) {
-                this.coins = this.coins.filter((id) => id !== coinId);
-                playerInventory[coinId] = (playerInventory[coinId] || 0) + 1;
-                updateStatusPanel();
-                button.parentElement!.remove();
-              }
-            });
-          },
-        );
+      const popupContent = CacheUI.createPopup(this.coins, onCollect, onDeposit, latLng.lat, latLng.lng);
+      this.marker.bindPopup(popupContent);
+    }
+  }
 
-        popupDiv
-          .querySelector<HTMLButtonElement>("#deposit")!
-          .addEventListener("click", () => {
-            const coinKeys = Object.keys(playerInventory);
-            if (coinKeys.length > 0) {
-              const depositCoinId = coinKeys[0];
-              delete playerInventory[depositCoinId];
-              this.coins.push(depositCoinId);
-              updateStatusPanel();
-              const coinList = popupDiv.querySelector("#coin-list")!;
-              const newCoinItem = document.createElement("li");
-              newCoinItem.innerHTML =
-                `${depositCoinId} <button data-coin-id="${depositCoinId}" class="collect-button">collect</button>`;
-              coinList.appendChild(newCoinItem);
-
-              newCoinItem.querySelector<HTMLButtonElement>(".collect-button")!
-                .addEventListener("click", () => {
-                  if (this.coins.indexOf(depositCoinId) !== -1) {
-                    this.coins = this.coins.filter((id) =>
-                      id !== depositCoinId
-                    );
-                    playerInventory[depositCoinId] =
-                      (playerInventory[depositCoinId] || 0) + 1;
-                    updateStatusPanel();
-                    newCoinItem.remove();
-                  }
-                });
-            }
-          });
-
-        return popupDiv;
-      });
+  private refreshPopupContent(lat: number, lng: number, onCollect: (coinId: string) => void, onDeposit: () => void) {
+    if (this.marker && this.marker.getPopup()) {
+      const newContent = CacheUI.createPopup(this.coins, onCollect, onDeposit, lat, lng);
+      this.marker.setPopupContent(newContent);
     }
   }
 }
 
-// Global cache storage
 const cacheStorage: Record<string, Cache> = {};
 
-// Utility function to round numbers to a fixed decimal places
-function roundToDecimals(num: number, decimals: number = 5): number {
-  return parseFloat(num.toFixed(decimals));
-}
-
-// Add caches to the map by cell numbers
 function spawnCache(i: number, j: number) {
   const cell = getCell(i, j);
   const cacheKey = `${cell.i},${cell.j}`;
@@ -187,8 +244,8 @@ function spawnCache(i: number, j: number) {
     const coins = Array.from(
       { length: coinCount },
       (_, index) =>
-        `coin_${roundToDecimals(OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES)},${
-          roundToDecimals(OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES)
+        `coin_${NumberUtils.roundToDecimals(OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES)},${
+          NumberUtils.roundToDecimals(OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES)
         } #${index}`,
     );
 
@@ -198,8 +255,7 @@ function spawnCache(i: number, j: number) {
   }
 
   const cache = cacheStorage[cacheKey];
-
-  if (!cache.marker) {
+  if (cache && !cache.marker) {
     cache.marker = leaflet.marker([
       OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES,
       OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES,
@@ -209,7 +265,6 @@ function spawnCache(i: number, j: number) {
   }
 }
 
-// Update cache visibility based on player's position
 function updateCacheVisibility(playerLat: number, playerLng: number) {
   Object.keys(cacheStorage).forEach((key) => {
     const [i, j] = key.split(",").map(Number);
@@ -234,17 +289,14 @@ function updateCacheVisibility(playerLat: number, playerLng: number) {
   });
 }
 
-// Track the player's last cell position
 let lastPlayerCell = { i: 0, j: 0 };
 
-// Function to determine the current cell based on the player's location
 function getPlayerCell(lat: number, lng: number) {
   const i = Math.floor((lat - OAKES_CLASSROOM.lat) / TILE_DEGREES);
   const j = Math.floor((lng - OAKES_CLASSROOM.lng) / TILE_DEGREES);
   return { i, j };
 }
 
-// Regenerate caches and update visibility around the player's new position
 function regenerateCachesAroundPlayer(lat: number, lng: number) {
   const { i: playerI, j: playerJ } = getPlayerCell(lat, lng);
 
@@ -270,7 +322,6 @@ function regenerateCachesAroundPlayer(lat: number, lng: number) {
   updateCacheVisibility(lat, lng);
 }
 
-// Function to move the player and handle game updates
 function movePlayer(direction: string) {
   let newLat = playerMarker.getLatLng().lat;
   let newLng = playerMarker.getLatLng().lng;
@@ -307,30 +358,17 @@ function movePlayer(direction: string) {
   updateMovementHistory(newLat, newLng);
   saveGameState();
 
-  statusPanel.innerHTML = `Player moved to: ${newLat.toFixed(5)}, ${
-    newLng.toFixed(5)
-  }`;
+  const statusPanel = document.getElementById("statusPanel") as HTMLDivElement;
+  statusPanel.innerHTML = `Player moved to: ${newLat.toFixed(5)}, ${newLng.toFixed(5)}`;
 }
 
-// Event listeners for directional movement buttons
-document.getElementById("north")!.addEventListener(
-  "click",
-  () => movePlayer("up"),
-);
-document.getElementById("south")!.addEventListener(
-  "click",
-  () => movePlayer("down"),
-);
-document.getElementById("west")!.addEventListener(
-  "click",
-  () => movePlayer("left"),
-);
-document.getElementById("east")!.addEventListener(
-  "click",
-  () => movePlayer("right"),
-);
+// Movement buttons
+document.getElementById("north")!.addEventListener("click", () => movePlayer("up"));
+document.getElementById("south")!.addEventListener("click", () => movePlayer("down"));
+document.getElementById("west")!.addEventListener("click", () => movePlayer("left"));
+document.getElementById("east")!.addEventListener("click", () => movePlayer("right"));
 
-// Add keyboard event listener for arrow keys
+// Keyboard events
 document.addEventListener("keydown", (event) => {
   switch (event.key) {
     case "ArrowUp":
@@ -348,14 +386,14 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-// Event listener for reset button
+// Reset button
 document.getElementById("reset")!.addEventListener("click", () => {
   const confirmed = confirm("Are you sure you want to reset the game state?");
   if (confirmed) {
     localStorage.clear();
-    Object.keys(playerInventory).forEach((key) => delete playerInventory[key]);
+    playerInventory.clear();
     movementPolyline.setLatLngs([]);
-    updateStatusPanel();
+    UIManager.updateStatusPanel(playerInventory.getItems());
     map.setView(OAKES_CLASSROOM, GAMEPLAY_ZOOM_LEVEL);
     playerMarker.setLatLng(OAKES_CLASSROOM);
     lastPlayerCell = { i: 0, j: 0 };
@@ -363,7 +401,7 @@ document.getElementById("reset")!.addEventListener("click", () => {
   }
 });
 
-// Real Location 🌐 button
+// Real location
 document.getElementById("sensor")!.addEventListener("click", () => {
   if (navigator.geolocation) {
     navigator.geolocation.watchPosition((position) => {
@@ -390,19 +428,10 @@ document.getElementById("sensor")!.addEventListener("click", () => {
   }
 });
 
-// Function to update the status panel
-function updateStatusPanel() {
-  const coinKeys = Object.keys(playerInventory);
-  statusPanel.innerHTML = coinKeys.length > 0
-    ? `Player Inventory: ${coinKeys.join(", ")}`
-    : "Player Inventory: None";
-}
-
-// Save game state to local storage
 function saveGameState() {
   const state = {
     playerPosition: playerMarker.getLatLng(),
-    playerInventory,
+    playerInventory: playerInventory.getItems(),
     movementHistory: movementPolyline.getLatLngs(),
   };
   localStorage.setItem("gameState", JSON.stringify(state));
@@ -410,7 +439,6 @@ function saveGameState() {
 
 type LatLng = { lat: number; lng: number };
 
-// Load game state from local storage
 function loadGameState() {
   const savedState = localStorage.getItem("gameState");
   if (savedState) {
@@ -422,11 +450,21 @@ function loadGameState() {
     const { lat, lng } = state.playerPosition;
     playerMarker.setLatLng(leaflet.latLng(lat, lng));
     map.panTo(leaflet.latLng(lat, lng));
-    Object.assign(playerInventory, state.playerInventory);
+
+    playerInventory.clear();
+    for (const coinId in state.playerInventory) {
+      if (Object.prototype.hasOwnProperty.call(state.playerInventory, coinId)) {
+        const count = state.playerInventory[coinId];
+        for (let i = 0; i < count; i++) {
+          playerInventory.addItem(coinId);
+        }
+      }
+    }
+
     movementPolyline.setLatLngs(
       state.movementHistory.map((pos) => leaflet.latLng(pos.lat, pos.lng)),
     );
-    updateStatusPanel();
+    UIManager.updateStatusPanel(playerInventory.getItems());
     regenerateCachesAroundPlayer(lat, lng);
   }
 }
