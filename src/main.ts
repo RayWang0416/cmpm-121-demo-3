@@ -1,27 +1,29 @@
 // @deno-types="npm:@types/leaflet@^1.9.14"
 import leaflet from "leaflet";
 
-// Style sheets
+// Import the leaflet CSS and local stylesheet
 import "leaflet/dist/leaflet.css";
 import "./style.css";
 
-// Deterministic random number generator
+// A deterministic random number generator for reproducible results
 import luck from "./luck.ts";
 
-// Location of our classroom
+// The location of our classroom as identified on Google Maps
 const OAKES_CLASSROOM = leaflet.latLng(36.989, -122.062);
 
 // Tunable gameplay parameters
-const GAMEPLAY_ZOOM_LEVEL = 19;
-const TILE_DEGREES = 1e-4;
-const NEIGHBORHOOD_SIZE = 8;
-const CACHE_SPAWN_PROBABILITY = 0.02;
-const MAX_COINS_PER_CACHE = 3;
-const MOVEMENT_STEP = TILE_DEGREES;
-const MAX_VISIBLE_DISTANCE = 0.001;
+const GAMEPLAY_ZOOM_LEVEL = 19; // Fixed zoom level for the map
+const TILE_DEGREES = 1e-4; // Each movement step or cache cell size in degrees
+const NEIGHBORHOOD_SIZE = 8; // Number of cells around the player to manage
+const CACHE_SPAWN_PROBABILITY = 0.02; // Probability of spawning a new cache in a cell
+const MAX_COINS_PER_CACHE = 3; // Maximum number of coins per cache
+const MOVEMENT_STEP = TILE_DEGREES; // Player movement step in degrees
+const MAX_VISIBLE_DISTANCE = 0.001; // Max visibility distance (in degrees) for caches (~111m per 0.001 latitude)
 
+// A cache for cell objects to avoid recreating them
 const cellCache: Record<string, { i: number; j: number }> = {};
 
+// Retrieve or create a cell object by its (i, j) coordinates
 function getCell(i: number, j: number) {
   const key = `${i},${j}`;
   if (!(key in cellCache)) {
@@ -30,7 +32,7 @@ function getCell(i: number, j: number) {
   return cellCache[key];
 }
 
-// Create the map
+// Create the map centered on the classroom
 const map = leaflet.map(document.getElementById("map")!, {
   center: OAKES_CLASSROOM,
   zoom: GAMEPLAY_ZOOM_LEVEL,
@@ -40,6 +42,7 @@ const map = leaflet.map(document.getElementById("map")!, {
   scrollWheelZoom: false,
 });
 
+// Add a base tile layer from OpenStreetMap
 leaflet
   .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
@@ -47,34 +50,39 @@ leaflet
   })
   .addTo(map);
 
+// Place a draggable marker to represent the player
 const playerMarker = leaflet.marker(OAKES_CLASSROOM, { draggable: true });
 playerMarker.bindTooltip("That's you!");
 playerMarker.addTo(map);
 
-// PlayerInventory负责玩家物品管理
+// PlayerInventory manages the player's coin inventory
 class PlayerInventory {
   private inventory: Record<string, number> = {};
 
+  // Add a coin to the player's inventory
   addItem(coinId: string) {
     this.inventory[coinId] = (this.inventory[coinId] || 0) + 1;
   }
 
+  // Remove a coin from the player's inventory
   removeItem(coinId: string) {
     if (this.inventory[coinId]) {
       delete this.inventory[coinId];
     }
   }
 
+  // Get all items (coins) the player currently holds
   getItems() {
     return this.inventory;
   }
 
+  // Clear the player's inventory
   clear() {
     this.inventory = {};
   }
 }
 
-// UIManager负责全局UI更新
+// UIManager handles updates to the global UI elements (like status panel)
 class UIManager {
   static updateStatusPanel(inventory: Record<string, number>) {
     const statusPanel = document.getElementById(
@@ -87,7 +95,7 @@ class UIManager {
   }
 }
 
-// CacheUI负责缓存UI弹窗创建
+// CacheUI creates the popup UI for caches (the lootable containers in the world)
 class CacheUI {
   static createPopup(
     coins: string[],
@@ -96,6 +104,7 @@ class CacheUI {
     lat: number,
     lng: number,
   ): HTMLElement {
+    // Create a popup element that shows the cache inventory and location
     const popupDiv = document.createElement("div");
     popupDiv.innerHTML = `
       <div>Cache Inventory:</div>
@@ -110,7 +119,7 @@ class CacheUI {
       <div>Cache Location: (${lat.toFixed(5)}, ${lng.toFixed(5)})</div>
     `;
 
-    // Collect按钮事件
+    // Handle coin collection from the cache
     popupDiv.querySelectorAll<HTMLButtonElement>(".collect-button").forEach(
       (button) => {
         button.addEventListener("click", () => {
@@ -123,7 +132,7 @@ class CacheUI {
       },
     );
 
-    // Deposit按钮事件
+    // Handle depositing a coin into the cache
     const depositBtn = popupDiv.querySelector<HTMLButtonElement>("#deposit");
     if (depositBtn) {
       depositBtn.addEventListener("click", () => {
@@ -135,31 +144,34 @@ class CacheUI {
   }
 }
 
-// 事件总线（可选）
-class EventEmitter {
-  private events: Record<string, Function[]> = {};
+// EventListener type for the event bus
+type EventListener = (...args: unknown[]) => void;
 
-  on(event: string, listener: Function) {
+// EventEmitter provides a simple publish-subscribe system for events
+class EventEmitter {
+  private events: Record<string, EventListener[]> = {};
+
+  on(event: string, listener: EventListener): void {
     if (!this.events[event]) {
       this.events[event] = [];
     }
     this.events[event].push(listener);
   }
 
-  emit(event: string, ...args: any[]) {
+  emit(event: string, ...args: unknown[]): void {
     if (this.events[event]) {
       this.events[event].forEach((listener) => listener(...args));
     }
   }
 }
 
-// 定义Cacheable接口，Cache实现该接口专注于数据相关方法
+// Cacheable interface ensures classes can save/load their state via toMemento/fromMemento
 interface Cacheable {
   toMemento(): string;
   fromMemento(memento: string): void;
 }
 
-// 将数值相关的实用函数分组在NumberUtils中
+// NumberUtils contains numeric utility functions
 class NumberUtils {
   static roundToDecimals(num: number, decimals: number = 5): number {
     return parseFloat(num.toFixed(decimals));
@@ -169,16 +181,20 @@ class NumberUtils {
 const playerInventory = new PlayerInventory();
 const eventBus = new EventEmitter();
 
+// Update the UI's status panel initially
 UIManager.updateStatusPanel(playerInventory.getItems());
 
+// A polyline to show the player's movement history on the map
 const movementPolyline = leaflet.polyline([], { color: "red" }).addTo(map);
 
+// Append new positions to the movement history
 function updateMovementHistory(lat: number, lng: number) {
   const currentLatLng = leaflet.latLng(lat, lng);
   movementPolyline.addLatLng(currentLatLng);
 }
 
-// Cache类只负责缓存数据逻辑，并实现Cacheable接口
+// Cache represents a container of coins placed on the map
+// It implements Cacheable, allowing it to save/load state
 class Cache implements Cacheable {
   coins: string[];
   marker: leaflet.Marker | null;
@@ -197,10 +213,12 @@ class Cache implements Cacheable {
     this.coins = state.coins;
   }
 
+  // Attach a popup to the cache marker that shows its inventory
   bindPopup() {
     if (this.marker) {
       const latLng = this.marker.getLatLng();
 
+      // Called when a coin is collected from the cache
       const onCollect = (coinId: string) => {
         this.coins = this.coins.filter((id) => id !== coinId);
         playerInventory.addItem(coinId);
@@ -209,6 +227,7 @@ class Cache implements Cacheable {
         this.refreshPopupContent(latLng.lat, latLng.lng, onCollect, onDeposit);
       };
 
+      // Called when depositing a coin into the cache from the player’s inventory
       const onDeposit = () => {
         const coinKeys = Object.keys(playerInventory.getItems());
         if (coinKeys.length > 0) {
@@ -226,6 +245,7 @@ class Cache implements Cacheable {
         }
       };
 
+      // Create and bind the popup to the cache marker
       const popupContent = CacheUI.createPopup(
         this.coins,
         onCollect,
@@ -237,6 +257,7 @@ class Cache implements Cacheable {
     }
   }
 
+  // Update the popup content if the cache changes (e.g., after collecting or depositing coins)
   private refreshPopupContent(
     lat: number,
     lng: number,
@@ -258,10 +279,12 @@ class Cache implements Cacheable {
 
 const cacheStorage: Record<string, Cache> = {};
 
+// Create or retrieve caches within the game world
 function spawnCache(i: number, j: number) {
   const cell = getCell(i, j);
   const cacheKey = `${cell.i},${cell.j}`;
 
+  // If there's no cache at this cell, try to create one
   if (!cacheStorage[cacheKey]) {
     const coinCount = Math.min(
       Math.floor(
@@ -299,6 +322,7 @@ function spawnCache(i: number, j: number) {
   }
 }
 
+// Update which caches are visible based on the player's position
 function updateCacheVisibility(playerLat: number, playerLng: number) {
   Object.keys(cacheStorage).forEach((key) => {
     const [i, j] = key.split(",").map(Number);
@@ -310,6 +334,7 @@ function updateCacheVisibility(playerLat: number, playerLng: number) {
       Math.pow(playerLat - cacheLat, 2) + Math.pow(playerLng - cacheLng, 2),
     );
 
+    // If the cache is within visible distance, show it; otherwise hide it
     if (distance <= MAX_VISIBLE_DISTANCE) {
       if (!map.hasLayer(cache.marker!)) {
         cache.marker!.addTo(map);
@@ -325,30 +350,32 @@ function updateCacheVisibility(playerLat: number, playerLng: number) {
 
 let lastPlayerCell = { i: 0, j: 0 };
 
+// Determine the cell coordinates (i, j) of a given latitude/longitude position
 function getPlayerCell(lat: number, lng: number) {
   const i = Math.floor((lat - OAKES_CLASSROOM.lat) / TILE_DEGREES);
   const j = Math.floor((lng - OAKES_CLASSROOM.lng) / TILE_DEGREES);
   return { i, j };
 }
 
+// Regenerate caches around the player's new position to ensure the world feels populated
 function regenerateCachesAroundPlayer(lat: number, lng: number) {
   const { i: playerI, j: playerJ } = getPlayerCell(lat, lng);
 
   for (
-    let i = playerI - NEIGHBORHOOD_SIZE;
-    i <= playerI + NEIGHBORHOOD_SIZE;
-    i++
+    let x = playerI - NEIGHBORHOOD_SIZE;
+    x <= playerI + NEIGHBORHOOD_SIZE;
+    x++
   ) {
     for (
-      let j = playerJ - NEIGHBORHOOD_SIZE;
-      j <= playerJ + NEIGHBORHOOD_SIZE;
-      j++
+      let y = playerJ - NEIGHBORHOOD_SIZE;
+      y <= playerJ + NEIGHBORHOOD_SIZE;
+      y++
     ) {
-      const cacheKey = `${i},${j}`;
+      const cacheKey = `${x},${y}`;
       if (cacheStorage[cacheKey]) {
-        spawnCache(i, j);
-      } else if (luck([i, j].toString()) < CACHE_SPAWN_PROBABILITY) {
-        spawnCache(i, j);
+        spawnCache(x, y);
+      } else if (luck([x, y].toString()) < CACHE_SPAWN_PROBABILITY) {
+        spawnCache(x, y);
       }
     }
   }
@@ -356,6 +383,7 @@ function regenerateCachesAroundPlayer(lat: number, lng: number) {
   updateCacheVisibility(lat, lng);
 }
 
+// Move the player in a given direction (up, down, left, right)
 function movePlayer(direction: string) {
   let newLat = playerMarker.getLatLng().lat;
   let newLng = playerMarker.getLatLng().lng;
@@ -380,9 +408,9 @@ function movePlayer(direction: string) {
   map.panTo(newPosition);
 
   const newPlayerCell = getPlayerCell(newLat, newLng);
+  // If the player moves into a new cell, regenerate the caches
   if (
-    newPlayerCell.i !== lastPlayerCell.i ||
-    newPlayerCell.j !== lastPlayerCell.j
+    newPlayerCell.i !== lastPlayerCell.i || newPlayerCell.j !== lastPlayerCell.j
   ) {
     regenerateCachesAroundPlayer(newLat, newLng);
     lastPlayerCell = newPlayerCell;
@@ -398,7 +426,7 @@ function movePlayer(direction: string) {
   }`;
 }
 
-// Movement buttons
+// Movement button event handlers
 document.getElementById("north")!.addEventListener(
   "click",
   () => movePlayer("up"),
@@ -416,7 +444,7 @@ document.getElementById("east")!.addEventListener(
   () => movePlayer("right"),
 );
 
-// Keyboard events
+// Handle keyboard arrow keys for player movement
 document.addEventListener("keydown", (event) => {
   switch (event.key) {
     case "ArrowUp":
@@ -434,7 +462,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-//Reset button
+// Reset the game state completely
 document.getElementById("reset")!.addEventListener("click", () => {
   const confirmed = confirm("Are you sure you want to reset the game state?");
   if (confirmed) {
@@ -449,7 +477,7 @@ document.getElementById("reset")!.addEventListener("click", () => {
   }
 });
 
-//Real location
+// Attempt to track the user's real location (if supported)
 document.getElementById("sensor")!.addEventListener("click", () => {
   if (navigator.geolocation) {
     navigator.geolocation.watchPosition((position) => {
@@ -476,6 +504,7 @@ document.getElementById("sensor")!.addEventListener("click", () => {
   }
 });
 
+// Save the current game state (position, inventory, movement history) to localStorage
 function saveGameState() {
   const state = {
     playerPosition: playerMarker.getLatLng(),
@@ -487,6 +516,7 @@ function saveGameState() {
 
 type LatLng = { lat: number; lng: number };
 
+// Load the previously saved game state (if any) from localStorage
 function loadGameState() {
   const savedState = localStorage.getItem("gameState");
   if (savedState) {
@@ -517,5 +547,5 @@ function loadGameState() {
   }
 }
 
+// Load the saved game state at startup
 loadGameState();
-//commit a
