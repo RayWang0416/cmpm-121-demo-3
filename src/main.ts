@@ -469,5 +469,4 @@ function loadGameState() {
   }
 }
 
-// Load game state on startup
 loadGameState();
