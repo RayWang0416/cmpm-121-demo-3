@@ -434,7 +434,7 @@ document.addEventListener("keydown", (event) => {
   }
 });
 
-// Reset button
+//Reset button
 document.getElementById("reset")!.addEventListener("click", () => {
   const confirmed = confirm("Are you sure you want to reset the game state?");
   if (confirmed) {
