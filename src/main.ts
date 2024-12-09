@@ -43,7 +43,7 @@ const map = leaflet.map(document.getElementById("map")!, {
 leaflet
   .tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
     maxZoom: 19,
-    attribution: '&copy; OpenStreetMap contributors',
+    attribution: "&copy; OpenStreetMap contributors",
   })
   .addTo(map);
 
@@ -77,7 +77,9 @@ class PlayerInventory {
 // UIManager负责全局UI更新
 class UIManager {
   static updateStatusPanel(inventory: Record<string, number>) {
-    const statusPanel = document.getElementById("statusPanel") as HTMLDivElement;
+    const statusPanel = document.getElementById(
+      "statusPanel",
+    ) as HTMLDivElement;
     const coinKeys = Object.keys(inventory);
     statusPanel.innerHTML = coinKeys.length > 0
       ? `Player Inventory: ${coinKeys.join(", ")}`
@@ -92,30 +94,34 @@ class CacheUI {
     onCollect: (coinId: string) => void,
     onDeposit: () => void,
     lat: number,
-    lng: number
+    lng: number,
   ): HTMLElement {
     const popupDiv = document.createElement("div");
     popupDiv.innerHTML = `
       <div>Cache Inventory:</div>
       <ul id="coin-list">
-        ${coins.map((coinId) =>
-          `<li>${coinId} <button data-coin-id="${coinId}" class="collect-button">collect</button></li>`
-        ).join("")}
+        ${
+      coins.map((coinId) =>
+        `<li>${coinId} <button data-coin-id="${coinId}" class="collect-button">collect</button></li>`
+      ).join("")
+    }
       </ul>
       <button id="deposit">Deposit</button>
       <div>Cache Location: (${lat.toFixed(5)}, ${lng.toFixed(5)})</div>
     `;
 
     // Collect按钮事件
-    popupDiv.querySelectorAll<HTMLButtonElement>(".collect-button").forEach(button => {
-      button.addEventListener("click", () => {
-        const coinId = button.getAttribute("data-coin-id");
-        if (coinId) {
-          onCollect(coinId);
-          button.parentElement?.remove();
-        }
-      });
-    });
+    popupDiv.querySelectorAll<HTMLButtonElement>(".collect-button").forEach(
+      (button) => {
+        button.addEventListener("click", () => {
+          const coinId = button.getAttribute("data-coin-id");
+          if (coinId) {
+            onCollect(coinId);
+            button.parentElement?.remove();
+          }
+        });
+      },
+    );
 
     // Deposit按钮事件
     const depositBtn = popupDiv.querySelector<HTMLButtonElement>("#deposit");
@@ -142,7 +148,7 @@ class EventEmitter {
 
   emit(event: string, ...args: any[]) {
     if (this.events[event]) {
-      this.events[event].forEach(listener => listener(...args));
+      this.events[event].forEach((listener) => listener(...args));
     }
   }
 }
@@ -211,18 +217,40 @@ class Cache implements Cacheable {
           this.coins.push(depositCoinId);
           UIManager.updateStatusPanel(playerInventory.getItems());
           eventBus.emit("cacheUpdated", this);
-          this.refreshPopupContent(latLng.lat, latLng.lng, onCollect, onDeposit);
+          this.refreshPopupContent(
+            latLng.lat,
+            latLng.lng,
+            onCollect,
+            onDeposit,
+          );
         }
       };
 
-      const popupContent = CacheUI.createPopup(this.coins, onCollect, onDeposit, latLng.lat, latLng.lng);
+      const popupContent = CacheUI.createPopup(
+        this.coins,
+        onCollect,
+        onDeposit,
+        latLng.lat,
+        latLng.lng,
+      );
       this.marker.bindPopup(popupContent);
     }
   }
 
-  private refreshPopupContent(lat: number, lng: number, onCollect: (coinId: string) => void, onDeposit: () => void) {
+  private refreshPopupContent(
+    lat: number,
+    lng: number,
+    onCollect: (coinId: string) => void,
+    onDeposit: () => void,
+  ) {
     if (this.marker && this.marker.getPopup()) {
-      const newContent = CacheUI.createPopup(this.coins, onCollect, onDeposit, lat, lng);
+      const newContent = CacheUI.createPopup(
+        this.coins,
+        onCollect,
+        onDeposit,
+        lat,
+        lng,
+      );
       this.marker.setPopupContent(newContent);
     }
   }
@@ -244,8 +272,14 @@ function spawnCache(i: number, j: number) {
     const coins = Array.from(
       { length: coinCount },
       (_, index) =>
-        `coin_${NumberUtils.roundToDecimals(OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES)},${
-          NumberUtils.roundToDecimals(OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES)
+        `coin_${
+          NumberUtils.roundToDecimals(
+            OAKES_CLASSROOM.lat + cell.i * TILE_DEGREES,
+          )
+        },${
+          NumberUtils.roundToDecimals(
+            OAKES_CLASSROOM.lng + cell.j * TILE_DEGREES,
+          )
         } #${index}`,
     );
 
@@ -359,14 +393,28 @@ function movePlayer(direction: string) {
   saveGameState();
 
   const statusPanel = document.getElementById("statusPanel") as HTMLDivElement;
-  statusPanel.innerHTML = `Player moved to: ${newLat.toFixed(5)}, ${newLng.toFixed(5)}`;
+  statusPanel.innerHTML = `Player moved to: ${newLat.toFixed(5)}, ${
+    newLng.toFixed(5)
+  }`;
 }
 
 // Movement buttons
-document.getElementById("north")!.addEventListener("click", () => movePlayer("up"));
-document.getElementById("south")!.addEventListener("click", () => movePlayer("down"));
-document.getElementById("west")!.addEventListener("click", () => movePlayer("left"));
-document.getElementById("east")!.addEventListener("click", () => movePlayer("right"));
+document.getElementById("north")!.addEventListener(
+  "click",
+  () => movePlayer("up"),
+);
+document.getElementById("south")!.addEventListener(
+  "click",
+  () => movePlayer("down"),
+);
+document.getElementById("west")!.addEventListener(
+  "click",
+  () => movePlayer("left"),
+);
+document.getElementById("east")!.addEventListener(
+  "click",
+  () => movePlayer("right"),
+);
 
 // Keyboard events
 document.addEventListener("keydown", (event) => {
@@ -401,7 +449,7 @@ document.getElementById("reset")!.addEventListener("click", () => {
   }
 });
 
-// Real location
+//Real location
 document.getElementById("sensor")!.addEventListener("click", () => {
   if (navigator.geolocation) {
     navigator.geolocation.watchPosition((position) => {
